@@ -26,24 +26,27 @@ function hasRequiredProps(req, res, next) {
   }
 }
 
+function hasPrice(req, res, next) {
+  const { data } = req.body;
+  const hasPrice = data.price > 0 && typeof data.price === "number";
+  if (hasPrice) {
+    next();
+  } else {
+    next({
+      status: 400,
+      message: `The price proptery is string. It needs to be a number`,
+    });
+  }
+}
+
 function hasRequiredContent(req, res, next) {
   const { data } = req.body;
   const contents = Object.values(data);
   const hasContent = contents.every((content) => content);
-  let hasPrice = "true";
-  if (data.price) {
-    hasPrice = data.price > 0 && typeof data.price === "number";
-  }
-  if (hasContent && hasPrice) {
+  if (hasContent) {
     next();
   } else {
     const emptyProp = [];
-    if (typeof data.price === "string") {
-      next({
-        status: 400,
-        message: `The price proptery is string. It needs to be a number`,
-      });
-    }
     for (const prop in data) {
       if (!data[prop] || data[prop] <= 0) {
         emptyProp.push(prop);
@@ -111,6 +114,13 @@ function update(req, res, next) {
 module.exports = {
   list,
   read: [hasDishId, read],
-  create: [hasRequiredProps, hasRequiredContent, create],
-  update: [hasDishId, checkReqId, hasRequiredContent, hasRequiredProps, update],
+  create: [hasRequiredProps, hasRequiredContent, hasPrice, create],
+  update: [
+    hasDishId,
+    checkReqId,
+    hasRequiredContent,
+    hasPrice,
+    hasRequiredProps,
+    update,
+  ],
 };

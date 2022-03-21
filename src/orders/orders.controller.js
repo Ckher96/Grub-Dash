@@ -6,8 +6,6 @@ const orders = require(path.resolve("src/data/orders-data"));
 // Use this function to assigh ID's when necessary
 const nextId = require("../utils/nextId");
 
-// TODO: Implement the /orders handlers needed to make the tests pass
-
 function checkIfPending(req, res, next) {
   const {
     foundOrder: { status },
@@ -53,39 +51,52 @@ function matchId(req, res, next) {
   }
 }
 
+function hasQuantity(req, res, next) {
+  const { data } = req.body;
+  let errIndex = [];
+  const hasQuantity = data.dishes.every((dish, index) => {
+    if (dish.quantity > 0 && typeof dish.quantity === "number") {
+      return true;
+    }
+    errIndex.push(index);
+    return false;
+  });
+  if (hasQuantity) {
+    next();
+  } else {
+    next({
+      status: 400,
+      message: `Dish ${errIndex} must have a quantity that is an integer greater than 0`,
+    });
+  }
+}
+
+function hasDish(req, res, next) {
+  const { data } = req.body;
+  const hasDish = data.dishes.length > 0;
+  if (hasDish) {
+    next();
+  } else {
+    next({ status: 400, message: "Order must include one dish" });
+  }
+}
+
 function hasRequiredContent(req, res, next) {
   const { data } = req.body;
   delete data.id;
   const contents = Object.values(data);
   const hasContent = contents.every((content) => content);
-  let errMessage = "";
   if (hasContent) {
-    let errIndex = [];
-    const hasQuantity = data.dishes.every((dish, index) => {
-      if (dish.quantity > 0 && typeof dish.quantity === "number") {
-        return true;
+    next();
+  } else {
+    const emptyProp = [];
+    for (const prop in data) {
+      if (!data[prop] || data[prop] <= 0) {
+        emptyProp.push(prop);
       }
-      errIndex.push(index);
-      return false;
-    });
-    const hasDish = data.dishes.length > 0;
-    if (hasQuantity && hasDish) {
-      next();
-    } else {
-      if (!hasQuantity)
-        errMessage = `Dish ${errIndex} must have a quantity that is an integer greater than 0`;
-      if (!hasDish) errMessage = "Order must include one dish";
     }
+    next({ status: 400, message: `Missing ${emptyProp}` });
   }
-  const emptyProp = [];
-  for (const prop in data) {
-    if (!data[prop] || data[prop] <= 0) {
-      emptyProp.push(prop);
-    }
-  }
-  if (emptyProp.length > 0) errMessage = `${emptyProp[0]} is empty`;
-
-  next({ status: 400, message: errMessage });
 }
 
 function hasOrderId(req, res, next) {
@@ -99,6 +110,38 @@ function hasOrderId(req, res, next) {
   }
 }
 
+function dishIsArray(req, res, next) {
+  const { data } = req.body;
+  const isArray = Array.isArray(data.dishes);
+  if(isArray) {
+    next();
+  } 
+  else {
+    next({ status: 400, message: `dish needs to be an array` });
+  }
+}
+
+function dishesHaveQuantity(req, res, next) {
+  const { data } = req.body;
+  const dishIndex = [];
+  const dishesHaveQuantity = data.dishes.every((dish, index) => {
+    const props = Object.keys(dish);
+    if (!props.includes("quantity")) {
+      dishIndex.push(index);
+      return false;
+    }
+    return true;
+  });
+  if (dishesHaveQuantity) {
+    next();
+  } else {
+    next({
+      status: 400,
+      message: `Dish ${dishIndex} must have a quantity that is an integer greater than 0`,
+    });
+  }
+}
+
 function hasRequiredProps(req, res, next) {
   const { data } = req.body;
   const requiredProps = ["deliverTo", "mobileNumber", "dishes"];
@@ -106,31 +149,17 @@ function hasRequiredProps(req, res, next) {
   const hasProps = requiredProps.every((prop) => {
     return props.includes(prop);
   });
-  const dishIndex = [];
-  let errMessage = "";
-  const isArray = Array.isArray(data.dishes);
-  if (hasProps && isArray) {
-    const dishesHaveQuantity = data.dishes.every((dish, index) => {
-      const props = Object.keys(dish);
-      if (!props.includes("quantity")) {
-        dishIndex.push(index);
-        return false;
-      }
-      return true;
-    });
-
-    if (dishesHaveQuantity) {
-      res.locals.data = data;
-      next();
-    } else {
-      errMessage = `Dish ${dishIndex} must have a quantity that is an integer greater than 0`;
-    }
+  if (hasProps) {
+    res.locals.data = data
+    next();
+  } else {
+    const missingProps = requiredProps.filter((prop) => !props.includes(prop));
+    if (missingProps.length > 0)
+      next({
+        status: 400,
+        message: `You are missing the ${missingProps} property`,
+      });
   }
-  const missingProps = requiredProps.filter((prop) => !props.includes(prop));
-  if (missingProps.length > 0)
-    errMessage = `You are missing the ${missingProps} property`;
-  if (!isArray) errMessage = `dish needs to be an array`;
-  next({ status: 400, message: errMessage });
 }
 
 function list(req, res, next) {
@@ -168,13 +197,25 @@ function destroy(req, res, next) {
 module.exports = {
   list,
   read: [hasOrderId, read],
-  create: [hasRequiredProps, hasRequiredContent, create],
+  create: [
+    hasRequiredProps,
+    dishIsArray,
+    dishesHaveQuantity,
+    hasRequiredContent,
+    hasDish,
+    hasQuantity,
+    create,
+  ],
   update: [
     checkStatus,
     hasOrderId,
     matchId,
     hasRequiredProps,
+    dishIsArray,
+    dishesHaveQuantity,
     hasRequiredContent,
+    hasDish,
+    hasQuantity,
     update,
   ],
   delete: [hasOrderId, checkIfPending, destroy],
